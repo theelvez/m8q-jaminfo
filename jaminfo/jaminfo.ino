@@ -1,3 +1,5 @@
+#include <Adafruit_PN532.h>
+
 #include <Wire.h> //Needed for I2C to GNSS
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -8,6 +10,8 @@
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+Adafruit_PN532 nfc(1, -1, &Wire);
 
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h> //Click here to get the library: http://librarymanager/All#SparkFun_u-blox_GNSS
 SFE_UBLOX_GNSS myGNSS;
@@ -55,6 +59,21 @@ void setup()
 
 }
 
+
+void readCardData(uint16_t timeout) {
+  uint8_t success;
+  uint8_t uid[] = {0, 0, 0, 0, 0, 0, 0};
+  uint8_t uidLength;
+  String cardData;
+
+  success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, timeout);
+
+  if (success) {
+    //Nothing
+  }
+}
+
+
 void loop()
 {
   // Create storage to hold the hardware status
@@ -78,7 +97,7 @@ void loop()
     display.print("CW jamming indicator: ");
     display.println(hwStatus.jamInd);
 
-    
+    readCardData(50);
 
     display.printf("Sats: %d", myGNSS.getSIV());
 
@@ -86,5 +105,5 @@ void loop()
     display.display();
   }
 
-  delay(2000);
+  delay(500);
 }
