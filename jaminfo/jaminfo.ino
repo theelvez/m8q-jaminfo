@@ -1,109 +1,80 @@
-#include <Adafruit_PN532.h>
+#include <SparkFun_u-blox_GNSS_Arduino_Library.h>
+#include <u-blox_config_keys.h>
+#include <u-blox_structs.h>
 
-#include <Wire.h> //Needed for I2C to GNSS
+#include <SPI.h>
+#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define I2C_ADDRESS 0x42  // I2C address of ZOE-M8Q GPS module
 
-#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+SFE_UBLOX_GNSS gps;
+
+#define SCREEN_WIDTH    128 // OLED display width, in pixels
+#define SCREEN_HEIGHT   64 // OLED display height, in pixels
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+// The pins for I2C are defined by the Wire-library. 
+// On an arduino UNO:       A4(SDA), A5(SCL)
+// On an arduino MEGA 2560: 20(SDA), 21(SCL)
+// On an arduino LEONARDO:   2(SDA),  3(SCL), ...
+#define OLED_RESET      -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS  0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-Adafruit_PN532 nfc(1, -1, &Wire);
-
-#include <SparkFun_u-blox_GNSS_Arduino_Library.h> //Click here to get the library: http://librarymanager/All#SparkFun_u-blox_GNSS
-SFE_UBLOX_GNSS myGNSS;
-
-void setup()
-{
-
+void setup() {
   Serial.begin(115200);
-  Wire.begin();
   
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    display.print("SSD1306 allocation failed");
+    //Serial.println(F("SSD1306 allocation failed"));
     for(;;); // Don't proceed, loop forever
   }
-
-  // Clear the buffer
-  display.clearDisplay();
-
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-
-
-  if (myGNSS.begin() == false)
-  {
-    display.print("u-blox GNSS not detected at default I2C address. Please check wiring. Freezing.");
-    while (1)
-      ;
-  }
-
-  // Enable the jamming / interference monitor
-  UBX_CFG_ITFM_data_t jammingConfig; // Create storage for the jamming configuration
-  if (myGNSS.getJammingConfiguration(&jammingConfig)) // Read the jamming configuration
-  {
-    if (jammingConfig.config.bits.enable == 0) // Check if the monitor is already enabled
-    {
-      (jammingConfig.config.bits.enable = 1); // Enable the monitor
-      if (myGNSS.setJammingConfiguration(&jammingConfig)) // Set the jamming configuration
-        display.println("Jamming monitor on");
-      else
-        display.println("Jamming monitor failed!");
-    }
-  }
+  
+  // Show the display buffer on the screen. You MUST call display() after
+  // drawing commands to make them visible on screen!
   display.display();
+  delay(2000);
 
-}
+  display.clearDisplay();
+  display.setTextSize(2); // Draw 2X-scale text
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(SCREEN_WIDTH/2,SCREEN_HEIGHT/2);
+  display.println(F("SSD1306"));
+  display.display();      // Show initial text
+  delay(100);
 
+  //
+  // Initialize the GNSS unit
+  //
+  if (gps.begin() == false) //Connect to the u-blox module using Wire port
+  {
+    display.println(F("u-blox GNSS not detected at default I2C address. Please check wiring. Freezing."));
+    display.display();
 
-void readCardData(uint16_t timeout) {
-  uint8_t success;
-  uint8_t uid[] = {0, 0, 0, 0, 0, 0, 0};
-  uint8_t uidLength;
-  String cardData;
-
-  success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, timeout);
-
-  if (success) {
-    //Nothing
+    while (1);
   }
+
+  printf("Factory reset starting...\n");
+  gps.factoryReset();
+
+  gps.setI2COutput(COM_TYPE_UBX); 
+  gps.setNavigationFrequency(10); 
+  gps.setAutoPVT(true); 
 }
 
+void loop() {
 
-void loop()
-{
-  // Create storage to hold the hardware status
-  // See the definition of UBX_MON_HW_data_t in u-blox_structs.h for more details
-  UBX_MON_HW_data_t hwStatus;
-
-  if (myGNSS.getHWstatus(&hwStatus)) // Read the hardware status
+  if (gps.getPVT() && (gps.getInvalidLlh() == false))
   {
     display.setCursor(0, 0);
     display.clearDisplay();
-    display.display();
-
-    display.printf("Jamming State: %d\n", hwStatus.flags.bits.jammingState);
-
-    display.print("Noise level: ");
-    display.println(hwStatus.noisePerMS);
-    
-    display.print("AGC monitor: ");
-    display.println(hwStatus.agcCnt);
-    
-    display.print("CW jamming indicator: ");
-    display.println(hwStatus.jamInd);
-
-    readCardData(50);
-
-    display.printf("Sats: %d", myGNSS.getSIV());
-
-    display.println();
+    display.printf("Prot: %d\n", gps.getProtocolVersion());
+    display.printf("Mod: %d.%d\n", gps.moduleSWVersion->versionHigh, gps.moduleSWVersion->versionLow);
+    display.printf("Sats: %d\n", gps.getSIV());
     display.display();
   }
 
-  delay(500);
+  delay(100);
 }
